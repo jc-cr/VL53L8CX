@@ -1,178 +1,81 @@
-/**
-******************************************************************************
-* @file    vl53l8cx.cpp
-* @author  STMicroelectronics
-* @version V2.0.0
-* @date    27 June 2024
-* @brief   Implementation of of a VL53L8CX Time of Flight(TOF) sensor.
-******************************************************************************
-* @attention
-*
-* <h2><center>&copy; COPYRIGHT(c) 2024 STMicroelectronics</center></h2>
-*
-* Redistribution and use in source and binary forms, with or without modification,
-* are permitted provided that the following conditions are met:
-*   1. Redistributions of source code must retain the above copyright notice,
-*      this list of conditions and the following disclaimer.
-*   2. Redistributions in binary form must reproduce the above copyright notice,
-*      this list of conditions and the following disclaimer in the documentation
-*      and/or other materials provided with the distribution.
-*   3. Neither the name of STMicroelectronics nor the names of its contributors
-*      may be used to endorse or promote products derived from this software
-*      without specific prior written permission.
-*
-* THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-* AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-* IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-* DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
-* FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-* DAMAGES(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-* SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-* CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-* OR TORT(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-* OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*
-******************************************************************************
-*/
-
-
-/* Includes ------------------------------------------------------------------*/
 #include "vl53l8cx.h"
 
+#define HIGH 1
+#define LOW 0
 
-/** Constructor
-  * @param i2c device I2C to be used for communication
-  * @param _lpn_pin pin to be used as component LPn
-  * @param _i2c_rst_pin pin to be used as component I2C_RST
-  */
-VL53L8CX::VL53L8CX(TwoWire *i2c, int _lpn_pin, int _i2c_rst_pin): dev_i2c(i2c), lpn_pin(_lpn_pin), i2c_rst_pin(_i2c_rst_pin)
-{
+
+VL53L8CX::VL53L8CX(coralmicro::I2c bus, int _lpn_pin, int _i2c_rst_pin)
+    : lpn_pin(_lpn_pin), i2c_rst_pin(_i2c_rst_pin) {
+  i2c_config = coralmicro::I2cGetDefaultConfig(bus);
+  coralmicro::I2cInitController(i2c_config);
+
   memset((void *)&_dev, 0x0, sizeof(VL53L8CX_Configuration));
-  dev_spi = NULL;
   _dev.platform.address = VL53L8CX_DEFAULT_I2C_ADDRESS;
-  _dev.platform.Write = VL53L8CX_io_write;
-  _dev.platform.Read = VL53L8CX_io_read;
-  _dev.platform.Wait = VL53L8CX_io_wait;
-  _dev.platform.handle = (void *)this;
-  p_dev = &_dev;
-}
-/** Constructor
-  * @param spi object of an helper class which handles the SPI peripheral
-  * @param _cs_pin the chip select pin
-  * @param _lpn_pin pin to be used as component LPn
-  * @param _i2c_rst_pin pin to be used as component I2C_RST
-  * @param _spi_speed the SPI speed in Hz
-  */
-VL53L8CX::VL53L8CX(SPIClass *spi, int _cs_pin, int _lpn_pin, int _i2c_rst_pin, uint32_t _spi_speed)  : dev_spi(spi), cs_pin(_cs_pin), lpn_pin(_lpn_pin), i2c_rst_pin(_i2c_rst_pin),  spi_speed(_spi_speed)
-{
-  memset((void *)&_dev, 0x0, sizeof(VL53L8CX_Configuration));
-  dev_i2c = NULL;
-  _dev.platform.address = VL53L8CX_DEFAULT_I2C_ADDRESS;
-  _dev.platform.Write = VL53L8CX_io_write;
-  _dev.platform.Read = VL53L8CX_io_read;
-  _dev.platform.Wait = VL53L8CX_io_wait;
+  _dev.platform.Write = &VL53L8CX::StaticIO_Write;
+  _dev.platform.Read = &VL53L8CX::StaticIO_Read;
+  _dev.platform.Wait = &VL53L8CX::StaticIO_Wait;
   _dev.platform.handle = (void *)this;
   p_dev = &_dev;
 }
 
-/** Destructor
-  */
+
 VL53L8CX::~VL53L8CX() {}
 
-/**
-  * @brief  Initialize the pins of the sensor
-  * @return Status 0 if check is OK.
-  */
 int VL53L8CX::begin()
 {
-  if (lpn_pin >= 0) {
-    pinMode(lpn_pin, OUTPUT);
-    digitalWrite(lpn_pin, LOW);
-    delay(10);
-    digitalWrite(lpn_pin, HIGH);
-  }
-  if (i2c_rst_pin >= 0) {
-    pinMode(i2c_rst_pin, OUTPUT);
-    if (dev_i2c) {
-      digitalWrite(i2c_rst_pin, LOW);
+    if (lpn_pin >= 0) {
+      coralmicro::GpioSetMode(static_cast<coralmicro::Gpio>(lpn_pin), coralmicro::GpioMode::kOutput);
+      coralmicro::GpioSet(static_cast<coralmicro::Gpio>(lpn_pin), false);
+      vTaskDelay(pdMS_TO_TICKS(10));
+      coralmicro::GpioSet(static_cast<coralmicro::Gpio>(lpn_pin), true);
     }
-    if (dev_spi) {
-      digitalWrite(i2c_rst_pin, HIGH);
+    if (i2c_rst_pin >= 0) {
+      coralmicro::GpioSetMode(static_cast<coralmicro::Gpio>(i2c_rst_pin), coralmicro::GpioMode::kOutput);
+      coralmicro::GpioSet(static_cast<coralmicro::Gpio>(i2c_rst_pin), false);
     }
-  }
-  if (dev_spi) {
-    // Configure CS pin
-    pinMode(cs_pin, OUTPUT);
-    digitalWrite(cs_pin, HIGH);
-  }
-  return 0;
+    return 0;
 }
 
-/**
-  * @brief  Deinitialize the pins of the sensor
-  * @return Status 0 if check is OK.
-  */
 int VL53L8CX::end()
 {
   if (lpn_pin >= 0) {
-    pinMode(lpn_pin, INPUT);
+    coralmicro::GpioSetMode(static_cast<coralmicro::Gpio>(lpn_pin), coralmicro::GpioMode::kInput);
   }
   if (i2c_rst_pin >= 0) {
-    pinMode(i2c_rst_pin, INPUT);
-  }
-  /* Reset CS configuration */
-  if (dev_spi) {
-    // Configure CS pin
-    pinMode(cs_pin, INPUT);
+    coralmicro::GpioSetMode(static_cast<coralmicro::Gpio>(i2c_rst_pin), coralmicro::GpioMode::kInput);
   }
   return 0;
 }
 
-/**
-  * @brief  PowerOn the sensor
-  * @return void
-  */
 void VL53L8CX::on(void)
 {
   if (lpn_pin >= 0) {
-    digitalWrite(lpn_pin, HIGH);
+    coralmicro::GpioSet(static_cast<coralmicro::Gpio>(lpn_pin), true);
   }
-  delay(10);
+  vTaskDelay(pdMS_TO_TICKS(10));
 }
 
-/**
-  * @brief  PowerOff the sensor
-  * @return void
-  */
 void VL53L8CX::off(void)
 {
   if (lpn_pin >= 0) {
-    digitalWrite(lpn_pin, LOW);
+    coralmicro::GpioSet(static_cast<coralmicro::Gpio>(lpn_pin), false);
   }
-  delay(10);
+  vTaskDelay(pdMS_TO_TICKS(10));
 }
 
-/**
-  * @brief  Reset I2C peripheral of the sensor
-  * @return void
-  */
 void VL53L8CX::i2c_reset(void)
 {
-  if (dev_i2c && i2c_rst_pin >= 0) {
-    digitalWrite(i2c_rst_pin, LOW);
-    delay(10);
-    digitalWrite(i2c_rst_pin, HIGH);
-    delay(10);
-    digitalWrite(i2c_rst_pin, LOW);
-    delay(10);
+  if (i2c_rst_pin >= 0) {
+    coralmicro::GpioSet(static_cast<coralmicro::Gpio>(i2c_rst_pin), false);
+    vTaskDelay(pdMS_TO_TICKS(10));
+    coralmicro::GpioSet(static_cast<coralmicro::Gpio>(i2c_rst_pin), true);
+    vTaskDelay(pdMS_TO_TICKS(10));
+    coralmicro::GpioSet(static_cast<coralmicro::Gpio>(i2c_rst_pin), false);
+    vTaskDelay(pdMS_TO_TICKS(10));
   }
 }
 
-/**
-  * @brief Check if the VL53L8CX sensor is alive(responding to I2C communication).
-  * @param p_is_alive Pointer to the variable that will be set to indicate if the sensor is alive.
-  * @return Status 0 if check is OK.
-  */
+
 uint8_t VL53L8CX::is_alive(uint8_t  *p_is_alive)
 {
   return vl53l8cx_is_alive(p_dev, p_is_alive);
@@ -608,17 +511,50 @@ uint8_t VL53L8CX::set_xtalk_margin(uint32_t xtalk_margin)
   return vl53l8cx_set_xtalk_margin(p_dev, xtalk_margin);
 }
 
-uint8_t VL53L8CX_io_write(void *handle, uint16_t RegisterAddress, uint8_t *p_values, uint32_t size)
-{
+uint8_t VL53L8CX::IO_Read(uint16_t RegisterAddress, uint8_t *p_values, uint32_t size) {
+  uint8_t buffer[2];
+  buffer[0] = (uint8_t)(RegisterAddress >> 8);
+  buffer[1] = (uint8_t)(RegisterAddress & 0xFF);
+
+  if (!coralmicro::I2cControllerWrite(i2c_config, _dev.platform.address, buffer, 2)) {
+    return 1;
+  }
+
+  if (!coralmicro::I2cControllerRead(i2c_config, _dev.platform.address, p_values, size)) {
+    return 1;
+  }
+
+  return 0;
+}
+
+
+uint8_t VL53L8CX::IO_Write(uint16_t RegisterAddress, uint8_t *p_values, uint32_t size) {
+  std::vector<uint8_t> buffer(size + 2);
+  buffer[0] = (uint8_t)(RegisterAddress >> 8);
+  buffer[1] = (uint8_t)(RegisterAddress & 0xFF);
+  std::copy(p_values, p_values + size, buffer.begin() + 2);
+
+  if (!coralmicro::I2cControllerWrite(i2c_config, _dev.platform.address, buffer.data(), buffer.size())) {
+    return 1;
+  }
+
+  return 0;
+}
+
+
+uint8_t VL53L8CX::IO_Wait(uint32_t ms) {
+  vTaskDelay(pdMS_TO_TICKS(ms));
+  return 0;
+}
+
+uint8_t VL53L8CX::StaticIO_Write(void *handle, uint16_t RegisterAddress, uint8_t *p_values, uint32_t size) {
   return ((VL53L8CX *)handle)->IO_Write(RegisterAddress, p_values, size);
 }
 
-uint8_t VL53L8CX_io_read(void *handle, uint16_t RegisterAddress, uint8_t *p_values, uint32_t size)
-{
+uint8_t VL53L8CX::StaticIO_Read(void *handle, uint16_t RegisterAddress, uint8_t *p_values, uint32_t size) {
   return ((VL53L8CX *)handle)->IO_Read(RegisterAddress, p_values, size);
 }
 
-uint8_t VL53L8CX_io_wait(void *handle, uint32_t ms)
-{
+uint8_t VL53L8CX::StaticIO_Wait(void *handle, uint32_t ms) {
   return ((VL53L8CX *)handle)->IO_Wait(ms);
 }

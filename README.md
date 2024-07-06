@@ -1,4 +1,13 @@
 # VL53L8CX
+
+Put this in /libs/VL53L8CX and add this to the `libs/CMakeLists.txt` file:
+
+```cmake
+add_subdirectory(VL53L8CX)
+```
+
+
+## From Original README
 Arduino library to support the VL53L8CX Time-of-Flight 8x8 multizone ranging sensor with wide field view.
 
 ## API
