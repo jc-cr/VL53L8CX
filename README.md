@@ -1,13 +1,35 @@
 # VL53L8CX
 
-Put this in /libs/VL53L8CX and add this to the `libs/CMakeLists.txt` file:
+The following fork makes modifications to the original library to make it compatible with the Coral Dev Board Micro. 
+To use this library, add it to the `libs` folder of your project. The resulting path should be `coralmicro/apps/your_app/libs/VL53L8CX`.
+Then update your `CMakeLists.txt` to include the library in the build. 
 
 ```cmake
-add_subdirectory(VL53L8CX)
+
+...
+
+add_subdirectory(libs/VL53L8CX)
+
+...
+
+target_include_directories(${PROJECT_NAME}
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/libs/VL53L8CX/include
+)
+
+...
+
+target_link_libraries(${PROJECT_NAME}
+    PRIVATE
+        libs_vl53l8cx
+)
+
+...
 ```
 
 
 ## From Original README
+
 Arduino library to support the VL53L8CX Time-of-Flight 8x8 multizone ranging sensor with wide field view.
 
 ## API
